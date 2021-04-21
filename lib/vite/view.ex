@@ -26,7 +26,10 @@ defmodule Vite.View do
   def vite_snippet(entry_name) do
     case Config.current_env() do
       :prod ->
-        Vite.Manifest.entry(entry_name) |> for_entry() |> as_safe()
+        case Vite.Manifest.entry(entry_name) do
+          nil -> {:safe, ""}
+          entry -> Vite.Manifest.entry(entry_name) |> for_entry() |> as_safe()
+        end
 
       _ ->
         ~s(<script type="module" src="#{Config.dev_server_address()}/#{entry_name}"></script>)
