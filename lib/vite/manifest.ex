@@ -7,32 +7,41 @@ defmodule Vite.Manifest do
 
   """
   alias Vite.ManifestReader
-  alias Vite.Entry
+  alias Vite.Chunk
   require Logger
 
-  @type entry_value :: binary() | list(binary()) | nil
+  @type chunk_value :: binary() | list(binary()) | nil
 
   @spec read() :: map()
   def read() do
     ManifestReader.read_vite()
   end
 
-  @spec entries() :: [Entry.t()]
-  def entries() do
+  def chunks() do
     read()
-    |> Enum.filter(&isEntry/1)
-    |> Enum.map(fn {_, value} -> value end)
-    |> Enum.map(&from_raw/1)
+    |> Enum.map(fn {chunk_name, chunk_data} -> from_raw(chunk_name, chunk_data) end)
   end
 
-  @spec entry(binary()) :: Entry.t()
+  def chunk(chunk_name) do
+    Enum.find(chunks(), &(&1.name == chunk_name))
+  end
+
+  @spec entries() :: [Chunk.t()]
+  def entries() do
+    chunks()
+    |> Enum.filter(& &1.isEntry)
+  end
+
+  @spec entry(binary()) :: Chunk.t()
   def entry(entry_name) do
     Enum.find(entries(), &(&1.name == entry_name))
   end
 
-  @spec isEntry({any, map()}) :: boolean()
-  defp isEntry({_key, value}) do
-    Map.get(value, "isEntry") == true
+  def descendent_chunks(%Chunk{} = chunk) do
+    Enum.reduce(chunk.imports, [], fn chunk_name, acc_chunks ->
+      child_chunk = chunk(chunk_name)
+      acc_chunks ++ [child_chunk] ++ descendent_chunks(child_chunk)
+    end)
   end
 
   # %{
@@ -42,48 +51,13 @@ defmodule Vite.Manifest do
   #   "isEntry" => true,
   #   "src" => "src/main.tsx"
   # }
-  defp from_raw(raw) do
-    %Entry{
-      name: Map.get(raw, "src"),
-      file: Map.get(raw, "file"),
-      cssfiles: Map.get(raw, "css", []),
-      imports: Map.get(raw, "imports", []) |> Enum.map(&get_file/1)
+  defp from_raw(chunk_name, chunk_data) do
+    %Chunk{
+      name: chunk_name,
+      file: Map.get(chunk_data, "file"),
+      cssfiles: Map.get(chunk_data, "css", []),
+      imports: Map.get(chunk_data, "imports", []),
+      isEntry: Map.get(chunk_data, "isEntry", false)
     }
-  end
-
-  @spec get_file(binary()) :: entry_value()
-  def get_file(file) do
-    read() |> get_in([file, "file"]) |> raise_missing(file)
-  end
-
-  @spec get_css(binary()) :: entry_value()
-  def get_css(file) do
-    read() |> get_in_with_default([file, "css"], [])
-  end
-
-  @spec get_imports(binary()) :: entry_value()
-  def get_imports(file) do
-    entries = read() |> get_in([file, "imports"])
-
-    cond do
-      entries == nil -> raise_missing(nil, file)
-      is_list(entries) -> entries |> Enum.map(&get_file/1)
-    end
-  end
-
-  @spec raise_missing(entry_value(), binary()) :: entry_value()
-  defp raise_missing(check, file) do
-    if is_nil(check) do
-      raise("Could not find an entry for #{file} in the manifest!")
-    else
-      check
-    end
-  end
-
-  defp get_in_with_default(map, path, default) do
-    case get_in(map, path) do
-      nil -> default
-      result -> result
-    end
   end
 end

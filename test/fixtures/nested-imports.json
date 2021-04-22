@@ -1,0 +1,23 @@
+{
+  "main.js": {
+    "file": "assets/main.js",
+    "src": "main.js",
+    "isEntry": true,
+    "dynamicImports": ["views/foo.js"],
+    "css": ["assets/main.css"],
+    "assets": [],
+    "imports": ["_shared1.js"]
+  },
+  "_shared1.js": {
+    "file": "assets/shared1.js",
+    "css": ["assets/shared1.css"],
+    "assets": [],
+    "imports": ["_shared2.js"]
+  },
+  "_shared2.js": {
+    "file": "assets/shared2.js",
+    "css": ["assets/shared2.css"],
+    "assets": [],
+    "imports": []
+  }
+}

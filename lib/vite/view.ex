@@ -2,7 +2,7 @@ defmodule Vite.View do
   @moduledoc """
   Help with View integration into Phoenix views
   """
-  alias Vite.{Config, Entry, ManifestReader}
+  alias Vite.{Config, Chunk, ManifestReader}
 
   @doc """
   The snippet for `@vite/client` during development. Does nothing in :prod env.
@@ -20,28 +20,10 @@ defmodule Vite.View do
   end
 
   @doc """
-  The complete snippet for a single entry-point during prod. Delegates to vite dev-server otherwise. See `:for_entry` for details.
-  """
-  @spec vite_snippet(binary()) :: binary() | {:safe, binary()}
-  def vite_snippet(entry_name) do
-    case Config.current_env() do
-      :prod ->
-        case Vite.Manifest.entry(entry_name) do
-          nil -> {:safe, ""}
-          entry -> Vite.Manifest.entry(entry_name) |> for_entry() |> as_safe()
-        end
-
-      _ ->
-        ~s(<script type="module" src="#{Config.dev_server_address()}/#{entry_name}"></script>)
-        |> as_safe()
-    end
-  end
-
-  @doc """
-  Generate all links for an entry struct in following order:
+  Generate all links for an chunk struct in following order:
 
     1. styles to prevent FOUC
-    2. main entry script
+    2. main chunk script
     3. imports
 
   `
@@ -50,20 +32,23 @@ defmodule Vite.View do
   <link rel="modulepreload" href="/assets/_vendor.7788aaa.js">
   `
   """
-  @spec for_entry(Entry.t(), binary()) :: binary()
-  def for_entry(entry = %Entry{}, prefix \\ "/") do
-    script = entry.file |> module_script(prefix)
-    imports = entry.imports |> Enum.map(&module_preload(&1, prefix)) |> Enum.join("\n")
-    css_files = entry.cssfiles |> Enum.map(&css_link(&1, prefix)) |> Enum.join("\n")
-    [css_files, script, imports] |> Enum.join("\n")
+  def entrypoint_snippet(%Chunk{isEntry: true} = chunk, descendent_chunks, opts \\ []) do
+    prefix = Keyword.get(opts, :prefix, "/")
+
+    css_files =
+      ([chunk] ++ descendent_chunks)
+      |> Enum.flat_map(& &1.cssfiles)
+      |> Enum.map(&css_link(&1, prefix))
+      |> Enum.join("\n")
+
+    script = module_script(chunk.file, prefix)
+    imports = Enum.map(descendent_chunks, &module_preload(&1.file, prefix)) |> Enum.join("\n")
+    [css_files, script, imports] |> Enum.join("\n") |> as_safe()
   end
 
-  @doc """
-  Helper to get HTML for all entry points at once
-  """
-  @spec for_entries(list(Entry.t())) :: binary()
-  def for_entries(entries, prefix \\ "/") do
-    entries |> Enum.map(&for_entry(&1, prefix)) |> Enum.join("\n")
+  def dev_entrypoint_snippet(entrypoint_name) do
+    ~s(<script type="module" src="#{Config.dev_server_address()}/#{entrypoint_name}"></script>)
+    |> as_safe()
   end
 
   @doc """
